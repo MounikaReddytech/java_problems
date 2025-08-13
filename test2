@@ -1,0 +1,121 @@
+// ===== REPLACE your drawBarChartBars method with this FIXED version =====
+
+// Your existing method structure - just update the yTop calculation part:
+
+// FIND this part in your code:
+/*
+group.value.forEach((barValue, valueIndex) => {
+    const x = groupX + valueIndex * chart.barWidth;
+    const yTop = initialY - (barValue - minVal) * scale * 0.85;  // ← THIS LINE NEEDS TO CHANGE
+    
+    ctx.fillStyle = barColors[valueIndex % barColors.length];
+    ctx.fillRect(x, yTop, chart.barWidth, initialY - yTop);
+});
+*/
+
+// REPLACE with this IMPROVED version:
+
+group.value.forEach((barValue, valueIndex) => {
+    const x = groupX + valueIndex * chart.barWidth;
+    
+    // ===== NEW: Smart yTop calculation for extreme ranges =====
+    const ratio = maxVal / Math.max(minVal, 0.0001);
+    let yTop;
+    
+    if (ratio > 10000) {
+        // Extreme range detected - use logarithmic scaling
+        console.log('Using log scaling for bar value:', barValue, 'in range', minVal, 'to', maxVal);
+        
+        // Logarithmic calculation
+        const logBarValue = Math.log10(Math.max(barValue, 0.0001));
+        const logMinVal = Math.log10(Math.max(minVal, 0.0001));
+        yTop = initialY - (logBarValue - logMinVal) * scale * 0.85;
+        
+    } else {
+        // Normal range - use linear scaling (your original)
+        yTop = initialY - (barValue - minVal) * scale * 0.85;
+    }
+    
+    // ===== Ensure bar is visible (minimum height) =====
+    const barHeight = initialY - yTop;
+    const minBarHeight = 2; // Minimum 2 pixels height
+    
+    if (barHeight < minBarHeight && barValue > 0) {
+        yTop = initialY - minBarHeight;
+    }
+    
+    // ===== Rest of your code stays the same =====
+    ctx.fillStyle = barColors[valueIndex % barColors.length];
+    ctx.fillRect(x, yTop, chart.barWidth, initialY - yTop);
+});
+
+// ===== ALSO: Update your scale calculation in the main method =====
+// In your main chart method, FIND this line:
+// const scale = (height - padding * 2) / (maxVal - minVal);
+
+// REPLACE with:
+const range = maxVal - minVal;
+const ratio = maxVal / Math.max(minVal, 0.0001);
+
+let scale;
+if (ratio > 10000) {
+    // Use logarithmic scale for extreme ranges
+    const logRange = Math.log10(maxVal) - Math.log10(Math.max(minVal, 0.0001));
+    scale = (height - padding * 2) / logRange;
+    console.log('Extreme range detected - using logarithmic scale. Ratio:', ratio, 'LogRange:', logRange);
+} else {
+    // Normal linear scale
+    scale = (height - padding * 2) / Math.max(range, 1);
+    console.log('Normal range - using linear scale. Range:', range);
+}
+
+// ===== ALTERNATIVE: If you want a simpler fix, use this hybrid approach =====
+// Instead of full logarithmic, use a "boosted" linear scale:
+
+// SIMPLE VERSION - just replace the yTop calculation with this:
+/*
+group.value.forEach((barValue, valueIndex) => {
+    const x = groupX + valueIndex * chart.barWidth;
+    
+    // Boost small values visibility
+    const ratio = maxVal / Math.max(minVal, 0.0001);
+    let adjustedBarValue = barValue;
+    
+    if (ratio > 1000 && barValue < (maxVal * 0.1)) {
+        // Boost small values (less than 10% of max)
+        const boostFactor = Math.log10(ratio) / 2;
+        adjustedBarValue = barValue * boostFactor;
+    }
+    
+    const yTop = initialY - (adjustedBarValue - minVal) * scale * 0.85;
+    
+    // Ensure minimum visibility
+    const barHeight = initialY - yTop;
+    const finalYTop = barHeight < 3 && barValue > 0 ? initialY - 3 : yTop;
+    
+    ctx.fillStyle = barColors[valueIndex % barColors.length];
+    ctx.fillRect(x, finalYTop, chart.barWidth, initialY - finalYTop);
+});
+*/
+
+// ===== TESTING =====
+// Add this console.log to see what's happening:
+// console.log('Bar values and heights:');
+// group.value.forEach((barValue, valueIndex) => {
+//     const barHeight = initialY - yTop;
+//     console.log(`Value: ${barValue}, Height: ${barHeight}px`);
+// });
+
+// ===== SUMMARY =====
+/*
+PROBLEM: Linear scaling makes small values invisible
+- Value 0.0001 in range 0.0001-600,000 gets height of ~0.0001px
+- Value 1 in same range gets height of ~0.002px  
+
+SOLUTION: Logarithmic scaling for extreme ranges
+- Value 0.0001 gets proportional height based on log scale
+- Value 1 gets much more visible height
+- Value 600,000 still remains tallest
+
+RESULT: All your small values will now be clearly visible as bars!
+*/
