@@ -1,0 +1,221 @@
+// ===== CLEAN INTERVALS FIX FOR YOUR CUSTOM ANGULARJS CHARTS =====
+
+// ===== REPLACE your calculateSmartIntervals method with this CLEAN version =====
+
+private calculateSmartIntervals(minVal: number, maxVal: number): number[] {
+    const range = maxVal - minVal;
+    
+    if (range <= 0) {
+        return [minVal, maxVal];
+    }
+    
+    const ratio = maxVal / Math.max(minVal, 0.0001);
+    console.log('Data range:', minVal, 'to', maxVal, 'Ratio:', ratio);
+    
+    // ===== FOR EXTREME RANGES: Use predefined business breakpoints =====
+    if (ratio > 1000) {
+        return this.getBusinessBreakpoints(minVal, maxVal);
+    }
+    
+    // ===== FOR NORMAL RANGES: Use nice step calculation =====
+    return this.getNormalIntervals(minVal, maxVal, range);
+}
+
+// ===== NEW METHOD: Business breakpoints for extreme ranges =====
+private getBusinessBreakpoints(minVal: number, maxVal: number): number[] {
+    // Predefined clean business numbers
+    const allBreakpoints = [
+        0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5,
+        1, 5, 10, 50, 100, 500,
+        1000, 5000, 10000, 50000, 100000, 500000, 1000000
+    ];
+    
+    const intervals = [minVal];
+    
+    // Find breakpoints that fall within our range
+    const validBreakpoints = allBreakpoints.filter(bp => 
+        bp > minVal && bp < maxVal
+    );
+    
+    // If we have too many breakpoints, select strategic ones
+    if (validBreakpoints.length > 4) {
+        const selected = [];
+        
+        // Always include the first breakpoint after minimum
+        if (validBreakpoints.length > 0) {
+            selected.push(validBreakpoints[0]);
+        }
+        
+        // Add middle breakpoints using logarithmic spacing
+        const logMin = Math.log10(Math.max(minVal, 0.0001));
+        const logMax = Math.log10(maxVal);
+        const logRange = logMax - logMin;
+        
+        for (let i = 1; i <= 2; i++) {
+            const targetLog = logMin + (logRange * i / 3);
+            const targetValue = Math.pow(10, targetLog);
+            
+            // Find closest business breakpoint
+            const closest = allBreakpoints.reduce((prev, curr) => 
+                Math.abs(curr - targetValue) < Math.abs(prev - targetValue) ? curr : prev
+            );
+            
+            if (closest > minVal && closest < maxVal && !selected.includes(closest)) {
+                selected.push(closest);
+            }
+        }
+        
+        intervals.push(...selected);
+    } else {
+        intervals.push(...validBreakpoints);
+    }
+    
+    intervals.push(maxVal);
+    
+    // Remove duplicates and sort
+    const result = [...new Set(intervals)].sort((a, b) => a - b);
+    console.log('Business breakpoints:', result);
+    return result;
+}
+
+// ===== NEW METHOD: Normal intervals for regular ranges =====
+private getNormalIntervals(minVal: number, maxVal: number, range: number): number[] {
+    const intervals = [minVal];
+    
+    let niceStep: number;
+    
+    if (range <= 1) {
+        // Small decimal range
+        const steps = [0.01, 0.02, 0.05, 0.1, 0.2, 0.5];
+        niceStep = steps.find(s => s >= range / 4) || 0.5;
+    } else if (range <= 10) {
+        // Small integer range
+        const steps = [0.5, 1, 2, 5];
+        niceStep = steps.find(s => s >= range / 4) || 5;
+    } else if (range <= 100) {
+        // Medium range
+        const steps = [5, 10, 20, 25, 50];
+        niceStep = steps.find(s => s >= range / 4) || 50;
+    } else {
+        // Large range
+        const steps = [100, 250, 500, 1000, 2500, 5000, 10000];
+        niceStep = steps.find(s => s >= range / 4) || 10000;
+    }
+    
+    // Generate intervals
+    let current = Math.ceil(minVal / niceStep) * niceStep;
+    while (current < maxVal && intervals.length < 5) {
+        intervals.push(current);
+        current += niceStep;
+    }
+    
+    intervals.push(maxVal);
+    
+    return [...new Set(intervals)].sort((a, b) => a - b);
+}
+
+// ===== KEEP your existing drawYAxisLabels method but ensure clean intervals =====
+private drawYAxisLabels(
+    ctx: CanvasRenderingContext2D,
+    minVal: number,
+    maxVal: number,
+    scale: number,
+    initialY: number,
+    padding: number,
+    graphTitle: string
+): void {
+    
+    // Use the new clean intervals
+    const smartIntervals = this.calculateSmartIntervals(minVal, maxVal);
+    const adjustedValue = graphTitle.includes(common_lib_label_constants.CONTRIBUTION_TO_BORR) ? 1 : 0.85;
+
+    ctx.fillStyle = 'black';
+    ctx.font = '12px Arial';
+    ctx.textAlign = 'right';
+
+    // Less aggressive overlap prevention for clean intervals
+    let lastYPosition = -999;
+    const minLabelSpacing = 20;
+
+    for (let i = 0; i < smartIntervals.length; i++) {
+        const yValue = smartIntervals[i];
+        
+        // Use the same position calculation as before
+        const yPosition = initialY - (yValue - minVal) * scale * adjustedValue;
+        
+        // Only skip if really too close (clean intervals should have good spacing)
+        if (Math.abs(yPosition - lastYPosition) < minLabelSpacing && i > 0 && i < smartIntervals.length - 1) {
+            continue;
+        }
+        
+        if (i === smartIntervals.length - 1) {
+            this.topmostLabelYPosition = yPosition;
+        }
+        
+        // Use your existing business formatting
+        ctx.fillText(this.formatBusinessNumber(yValue), padding - 10, yPosition + 4);
+        
+        lastYPosition = yPosition;
+    }
+}
+
+// ===== ALSO: Update your drawHorizontalLines to match clean intervals =====
+private drawHorizontalLines(
+    ctx: CanvasRenderingContext2D, 
+    minVal: number, 
+    maxVal: number, 
+    scale: number, 
+    initialY: number, 
+    padding: number, 
+    chartWidth: number
+): void {
+    
+    // Use the same clean intervals for grid lines
+    const smartIntervals = this.calculateSmartIntervals(minVal, maxVal);
+    const adjustedValue = 0.85;
+    
+    ctx.strokeStyle = '#e0e0e0';
+    ctx.lineWidth = 0.5;
+    
+    smartIntervals.forEach(yValue => {
+        const yPosition = initialY - (yValue - minVal) * scale * adjustedValue;
+        
+        // Only draw grid lines within chart bounds
+        if (yPosition >= padding && yPosition <= initialY) {
+            ctx.beginPath();
+            ctx.moveTo(padding, yPosition);
+            ctx.lineTo(chartWidth - padding, yPosition);
+            ctx.stroke();
+        }
+    });
+}
+
+// ===== EXPECTED RESULT FOR YOUR DATA =====
+/*
+Your current messy intervals:
+0.0001, 0.00347, 0.1205, 4.18, 145.2, 5043, 175000, 600000
+
+Will become clean business intervals:
+0.0001, 0.001, 0.1, 1, 100, 10k, 600k
+
+OR (depending on your exact data):
+0.0001, 0.01, 1, 1k, 100k, 600k
+*/
+
+// ===== TESTING: Add this to see what intervals are generated =====
+/*
+// Add this in your main chart method temporarily:
+const testIntervals = this.calculateSmartIntervals(minVal, maxVal);
+console.log('Generated clean intervals:', testIntervals);
+console.log('Formatted labels:', testIntervals.map(val => this.formatBusinessNumber(val)));
+*/
+
+// ===== KEY BENEFITS =====
+/*
+✅ Clean business-friendly numbers only
+✅ Maximum 5-6 intervals (not overcrowded)  
+✅ Strategic breakpoints for extreme ranges
+✅ Works with your existing positioning logic
+✅ Grid lines match Y-axis labels exactly
+✅ Professional financial chart appearance
+*/
