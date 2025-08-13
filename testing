@@ -1,0 +1,214 @@
+// ===== REPLACE your calculateSmartIntervals method with this FIXED version =====
+
+private calculateSmartIntervals(minVal: number, maxVal: number): number[] {
+    const range = maxVal - minVal;
+    const intervals: number[] = [];
+    
+    // Always start with min value
+    intervals.push(minVal);
+    
+    if (range <= 0) {
+        return [minVal, maxVal];
+    }
+    
+    // ===== SPECIAL HANDLING for EXTREME RANGES =====
+    const ratio = maxVal / Math.max(minVal, 0.0001);
+    
+    if (ratio > 10000) {
+        // Extreme range like 0.0001 to 600,000
+        // Use logarithmic-style intervals to capture small values
+        
+        console.log('Extreme range detected:', minVal, 'to', maxVal, 'ratio:', ratio);
+        
+        // Add key breakpoints that make sense for your financial data
+        const extremeBreakpoints = [
+            0.001, 0.01, 0.1, 0.5, 1, 5, 10, 50, 100, 500, 
+            1000, 5000, 10000, 50000, 100000, 500000
+        ];
+        
+        for (const breakpoint of extremeBreakpoints) {
+            if (breakpoint > minVal && breakpoint < maxVal) {
+                intervals.push(breakpoint);
+            }
+        }
+        
+        // Also add some calculated intervals for better coverage
+        const logMin = Math.log10(Math.max(minVal, 0.0001));
+        const logMax = Math.log10(maxVal);
+        const logRange = logMax - logMin;
+        
+        // Generate 3-4 logarithmic intervals
+        for (let i = 1; i <= 3; i++) {
+            const logVal = logMin + (logRange * i / 4);
+            const val = Math.pow(10, logVal);
+            if (val > minVal && val < maxVal && !intervals.includes(val)) {
+                intervals.push(Math.round(val * 10000) / 10000); // Round to 4 decimals
+            }
+        }
+    }
+    else if (range <= 1) {
+        // Small decimal range (like 0.2841 to 0.9865)
+        const step = this.getNiceStep(range / 4);
+        let current = minVal + step;
+        let count = 0;
+        while (current < maxVal && count < 4) {
+            intervals.push(parseFloat(current.toFixed(6)));
+            current += step;
+            count++;
+        }
+    }
+    else if (range <= 100) {
+        // Medium range (like 1 to 100)
+        const step = this.getNiceStep(range / 4);
+        let current = minVal + step;
+        let count = 0;
+        while (current < maxVal && count < 4) {
+            intervals.push(Math.round(current * 100) / 100);
+            current += step;
+            count++;
+        }
+    }
+    else if (range <= 10000) {
+        // Large range (like 100 to 5000)
+        const breakpoints = [1, 5, 10, 50, 100, 500, 1000, 5000];
+        
+        for (const breakpoint of breakpoints) {
+            if (breakpoint > minVal && breakpoint < maxVal) {
+                intervals.push(breakpoint);
+            }
+        }
+        
+        // If we don't have enough, add calculated ones
+        if (intervals.filter(val => val > minVal && val < maxVal).length < 2) {
+            const step = this.getNiceStep(range / 4);
+            let current = minVal + step;
+            let count = 0;
+            while (current < maxVal && count < 3) {
+                intervals.push(Math.round(current));
+                current += step;
+                count++;
+            }
+        }
+    }
+    else {
+        // Very large range (like 1000 to 600,000)
+        const breakpoints = [1000, 5000, 10000, 50000, 100000, 500000];
+        
+        for (const breakpoint of breakpoints) {
+            if (breakpoint > minVal && breakpoint < maxVal) {
+                intervals.push(breakpoint);
+            }
+        }
+    }
+    
+    // Always end with max value
+    intervals.push(maxVal);
+    
+    // Remove duplicates and sort
+    const uniqueIntervals = [...new Set(intervals)].sort((a, b) => a - b);
+    
+    // ===== ENSURE we have enough intervals for extreme ranges =====
+    if (ratio > 10000 && uniqueIntervals.length < 4) {
+        // Force more intervals for extreme ranges
+        const additionalPoints = [];
+        
+        // Add more strategic points
+        if (minVal < 1 && maxVal > 1000) {
+            if (!uniqueIntervals.includes(0.1)) additionalPoints.push(0.1);
+            if (!uniqueIntervals.includes(1)) additionalPoints.push(1);
+            if (!uniqueIntervals.includes(100)) additionalPoints.push(100);
+            if (!uniqueIntervals.includes(10000)) additionalPoints.push(10000);
+        }
+        
+        uniqueIntervals.push(...additionalPoints);
+        uniqueIntervals.sort((a, b) => a - b);
+    }
+    
+    // Limit to max 8 intervals for layout safety, but ensure minimum 4 for extreme ranges
+    if (uniqueIntervals.length > 8) {
+        // Keep first, last, and evenly distribute middle ones
+        const result = [uniqueIntervals[0]];
+        const step = Math.floor((uniqueIntervals.length - 2) / 6);
+        for (let i = step; i < uniqueIntervals.length - 1; i += step) {
+            result.push(uniqueIntervals[i]);
+        }
+        result.push(uniqueIntervals[uniqueIntervals.length - 1]);
+        return result;
+    }
+    
+    console.log('Final intervals for', minVal, 'to', maxVal, ':', uniqueIntervals);
+    return uniqueIntervals;
+}
+
+// ===== ALSO UPDATE: Better scale calculation for extreme ranges =====
+// REPLACE your scale calculation in the main method with this:
+
+// In your main chart method, REPLACE:
+// const scale = (height - padding * 2) / Math.max(maxVal - minVal, 1);
+
+// WITH this improved version:
+const range = maxVal - minVal;
+const ratio = maxVal / Math.max(minVal, 0.0001);
+
+let scale;
+if (ratio > 10000) {
+    // For extreme ranges, use logarithmic scaling
+    const logRange = Math.log10(maxVal) - Math.log10(Math.max(minVal, 0.0001));
+    scale = (height - padding * 2) / logRange;
+    console.log('Using logarithmic scale for extreme range');
+} else {
+    // Normal linear scaling
+    scale = (height - padding * 2) / Math.max(range, 1);
+}
+
+// ===== UPDATE: Bar height calculation for extreme ranges =====
+// In your drawBarChartBars method, UPDATE the bar height calculation:
+
+// FIND this line (or similar):
+// const barHeight = (value - minVal) * scale * adjustedValue;
+
+// REPLACE with:
+const ratio = maxVal / Math.max(minVal, 0.0001);
+let barHeight;
+
+if (ratio > 10000) {
+    // Use logarithmic height calculation for extreme ranges
+    const logValue = Math.log10(Math.max(value, 0.0001));
+    const logMin = Math.log10(Math.max(minVal, 0.0001));
+    barHeight = (logValue - logMin) * scale * adjustedValue;
+} else {
+    // Normal linear height calculation
+    barHeight = (value - minVal) * scale * adjustedValue;
+}
+
+// ===== UPDATE: Y-axis label positioning for extreme ranges =====
+// In your drawYAxisLabels method, UPDATE the yPosition calculation:
+
+// FIND this line:
+// const yPosition = initialY - (yValue - minVal) * scale * adjustedValue;
+
+// REPLACE with:
+const ratio = maxVal / Math.max(minVal, 0.0001);
+let yPosition;
+
+if (ratio > 10000) {
+    // Use logarithmic positioning for extreme ranges
+    const logYValue = Math.log10(Math.max(yValue, 0.0001));
+    const logMin = Math.log10(Math.max(minVal, 0.0001));
+    yPosition = initialY - (logYValue - logMin) * scale * adjustedValue;
+} else {
+    // Normal linear positioning
+    yPosition = initialY - (yValue - minVal) * scale * adjustedValue;
+}
+
+// ===== SUMMARY OF CHANGES =====
+/*
+1. ✅ Better interval generation for extreme ranges (0.0001 to 600,000)
+2. ✅ Logarithmic scaling for extreme ratios
+3. ✅ More strategic breakpoints (0.001, 0.01, 0.1, 1, 10, 100, 1000, etc.)
+4. ✅ Better bar height calculation for small values
+5. ✅ Proper Y-axis positioning for extreme ranges
+6. ✅ Console logging to debug what's happening
+
+This should make your small values (1, 0.2841, 0.0001) clearly visible as bars!
+*/
